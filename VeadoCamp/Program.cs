@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using System.IO;
 
 // Veadotube API
 using VeadoTube.BleatCan;
@@ -26,7 +27,7 @@ namespace VeadoCamp
         public required string Name { get; set; }
 
         [JsonPropertyName("id")]
-        public required string Id { get; set; }
+        public required string Id { get; set; } // Currently always 'mini'
 
         [JsonPropertyName("payload")]
         public required Payload Payload { get; set; }
@@ -36,6 +37,7 @@ namespace VeadoCamp
     // For handling JSON Payload
     public class Payload
     {
+        // This will inform us of what type of Payload we actually received!
         [JsonPropertyName("event")]
         public required string Event { get; set; }
 
@@ -46,16 +48,27 @@ namespace VeadoCamp
         // Recieved when setting the state, via 'peek' event
         [JsonPropertyName ("state")]
         public string ActiveState { get; set; }
+
+        // Recieved when requesting the Image of a state, via 'thumb' event
+        [JsonPropertyName("width")] 
+        public int pngWidth { get; set; }
+        
+        [JsonPropertyName("height")]
+        public int pngHeight{ get; set; }
+
+        [JsonPropertyName("png")]
+        public string PNG { get; set; }
     }
 
     // Veadotube States
     public class State
     {
         // Constructor
-        public State(string id, string name, bool active = false)
+        public State(string id, string name, Image image = null, bool active = false)
         {
             ID = id;
             Name = name;
+            Image = image;
 
             Active = active;
         }
@@ -67,8 +80,32 @@ namespace VeadoCamp
         [JsonPropertyName("name")]
         public string Name { get; set; }
 
+        public Image Image { get; set; }
+
         // Custom Data
         public bool Active { get; set; }
+    }
+
+    // Veadotube State Images
+    public class Image 
+    {
+        public Image(int width, int height, string imageData64) 
+        {
+            Width = width;
+
+            Height = height;
+
+            Image64 = imageData64;
+        }
+
+        [JsonPropertyName("width")]
+        public int Width;
+
+        [JsonPropertyName("height")]
+        public int Height;
+
+        [JsonPropertyName("png")]
+        public string Image64;
     }
 
 
@@ -188,6 +225,41 @@ namespace VeadoCamp
             }
         }
 
+        // DEBUGGING ONLY
+        public void SaveImageFromBase64(string base64Image, string filename)
+        {
+            // Get the path to the user's desktop
+            string desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+
+            // Combine the desktop path with the filename parameter to create the full path
+            string filePath = Path.Combine(desktopPath, filename);
+
+            // Ensure the filename ends with '.png' to save as a PNG file, since they will likely be taken directly from state
+            if (!filePath.EndsWith(".png"))
+            {
+                filePath += ".png";
+            }
+
+            try
+            {
+                // Convert Base64 String to byte[]
+                byte[] imageBytes = Convert.FromBase64String(base64Image);
+
+                // Write the bytes to a file
+                using (var imageFile = new FileStream(filePath, FileMode.Create))
+                {
+                    imageFile.Write(imageBytes, 0, imageBytes.Length);
+                    imageFile.Flush(); // Ensure all bytes are written to the file
+                }
+
+                Console.WriteLine($"Image saved to {filePath}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Error saving image: " + ex.Message);
+            }
+        }
+
 
 
         /////////////////////////////////////////////////////////////////////////////////
@@ -200,19 +272,28 @@ namespace VeadoCamp
             m_Connection.Send("nodes", Encoding.UTF8.GetBytes(message));
         }
 
-        public void SetState(string stateId)
+        public void SetState(string stateID)
         {
             // Building the JSON string for the payload
-            string message = "{\"event\":\"payload\",\"type\":\"stateEvents\",\"id\":\"mini\",\"payload\":{\"event\":\"set\",\"state\":\"" + stateId + "\"}}";
+            string message = "{\"event\":\"payload\",\"type\":\"stateEvents\",\"id\":\"mini\",\"payload\":{\"event\":\"set\",\"state\":\"" + stateID + "\"}}";
             // Assuming 'connection' is an instance of 'Connection' that has already been established
             m_Connection.Send("nodes", Encoding.UTF8.GetBytes(message));
-            Console.WriteLine($"Attempting to set state to {stateId} in 'mini' node...");
+            Console.WriteLine($"Attempting to set state to {stateID} in 'mini' node...");
         }
 
         public void RequestAllStates()
         {
             string message = "{\"event\":\"payload\",\"type\":\"stateEvents\",\"id\":\"mini\",\"payload\":{\"event\":\"list\"}}";
             m_Connection.Send("nodes", Encoding.UTF8.GetBytes(message));
+            Console.WriteLine($"Requesting List of Current State");
+
+        }
+
+        public void RequestStateImage(string stateID)
+        {
+            string message = "{\"event\":\"payload\",\"type\":\"stateEvents\",\"id\":\"mini\",\"payload\":{\"event\":\"thumb\",\"state\":\"" + stateID + "\"}}";
+            m_Connection.Send("nodes", Encoding.UTF8.GetBytes(message));
+            Console.WriteLine($"Requesting State Image for StateID: {stateID}");
         }
 
         public void StartStateMonitor()
@@ -275,12 +356,12 @@ namespace VeadoCamp
                 string message = Encoding.UTF8.GetString(data).TrimEnd('\0');
 
                 // Debugging
-                Console.WriteLine("From:    " + connection.server   );
-                Console.WriteLine("Message: " + message             );
-                Console.WriteLine("Channel: " + channel             );
+                Console.WriteLine("From:                " + connection.server   );
+                Console.WriteLine("Message:             " + message             );
+                Console.WriteLine("Channel:             " + channel             );
 
 
-                // Deserialize JSON to C# object
+                // Deserialize JSON to temporary C# object
                 RootObject detailedPayload = JsonSerializer.Deserialize<RootObject>(message);
 
 
@@ -297,7 +378,7 @@ namespace VeadoCamp
                             case "stateEvents": 
                             {
                                 // Command Name
-                                switch (detailedPayload.Name) 
+                                switch (detailedPayload.Name)
                                 {
                                     case "avatar state":
                                     {
@@ -309,7 +390,10 @@ namespace VeadoCamp
                                                 States.Clear();  // Clear existing states
                                                 foreach (var state in detailedPayload.Payload.States)
                                                 {
+                                                    // Create State
                                                     States.Add(new State($"{state.ID}", state.Name));
+                                                    // Get the Image of the State
+                                                    RequestStateImage(state.ID);
                                                 }
                                                 Console.WriteLine("\n Updated States List.");
                                                 break;
@@ -319,36 +403,52 @@ namespace VeadoCamp
                                                 SetActiveState(detailedPayload.Payload.ActiveState);
                                                 break;
                                             }
-                                            case null:
+                                            case "thumb":
                                             {
-                                                Console.WriteLine("< reply UNKNOWN PAYLOAD TYPE.");
+                                                // Check if image was recieved / deserialized correctly
+                                                if (string.IsNullOrEmpty(detailedPayload.Payload.PNG) ||
+                                                    detailedPayload.Payload.pngWidth < 0 ||
+                                                    detailedPayload.Payload.pngHeight < 0)
+                                                    throw new Exception("Image was NULL!");
+
+                                                // Save Image
+                                                foreach (var state in States)
+                                                {
+                                                    if (state.ID == detailedPayload.Payload.ActiveState)
+                                                    { 
+                                                        state.Image = new Image(detailedPayload.Payload.pngWidth, detailedPayload.Payload.pngHeight, detailedPayload.Payload.PNG);
+                                                        // DEBUG: Save them to the Desktop in order to view them
+                                                        //SaveImageFromBase64(state.Image.Image64, state.Name);
+                                                    }
+                                                }
                                                 break;
                                             }
-                                        }
+                                            case null:
+                                            {
+                                                throw new Exception("UNKNOWN PAYLOAD TYPE!");
+                                            }
+                                        } // End Event
                                         break;
                                     }
                                     case null:
                                     {
-                                        Console.WriteLine("< reply UNKNOWN COMMAND NAME.");
-                                        break;
+                                        throw new Exception("UNKNOWN COMMAND NAME!");
                                     }
-                                }
+                                } // End Name
 
                                 break;
                             }
                             case null:
                             {
-                                Console.WriteLine("< reply UNKNOWN COMMAND TYPE.");
-                                break;
+                                throw new Exception("UNKNOWN COMMAND TYPE!");
                             }
-                        }
+                        } // End Type
 
                         break;
                     }
                     case null:
                     {
-                        Console.WriteLine("< reply UNKNOWN CHANNEL.");
-                        break;
+                        throw new Exception("reply UNKNOWN CHANNEL!");
                     }
                 } // End of Switch
 
