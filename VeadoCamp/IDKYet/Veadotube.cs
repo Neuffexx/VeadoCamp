@@ -12,8 +12,12 @@ using System.IO;
 // Veadotube API
 using VeadoTube.BleatCan;
 
-namespace VeadoCamp
+namespace VeadoCamp.IDKYet
 {
+    /////////////////////////////////////////////////////////////////////////////////
+    /// VeadoTube object classes for Deserializing the Responses
+    /////////////////////////////////////////////////////////////////////////////////
+
     // For handling JSON Reply
     public class RootObject
     {
@@ -46,15 +50,15 @@ namespace VeadoCamp
         public List<State> States { get; set; }
 
         // Recieved when setting the state, via 'peek' event
-        [JsonPropertyName ("state")]
+        [JsonPropertyName("state")]
         public string ActiveState { get; set; }
 
         // Recieved when requesting the Image of a state, via 'thumb' event
-        [JsonPropertyName("width")] 
+        [JsonPropertyName("width")]
         public int pngWidth { get; set; }
-        
+
         [JsonPropertyName("height")]
-        public int pngHeight{ get; set; }
+        public int pngHeight { get; set; }
 
         [JsonPropertyName("png")]
         public string PNG { get; set; }
@@ -87,9 +91,9 @@ namespace VeadoCamp
     }
 
     // Veadotube State Images
-    public class Image 
+    public class Image
     {
-        public Image(int width, int height, string imageData64) 
+        public Image(int width, int height, string imageData64)
         {
             Width = width;
 
@@ -110,97 +114,15 @@ namespace VeadoCamp
 
 
 
-    /// <summary>
-    /// Pretty rushed implementation based on GitLab demo to just try and figure out how to send and recieve information from the websocket.
-    /// Currently only connects to a single instance and is able to recieve and set the states (randomly for testing).
-    /// 
-    /// TODO:
-    /// - Going to improve project structure and hook it up with the Mountain DisplayPad,
-    /// so that it can be controlled from the Display Keys instead.
-    /// - Also want to be able to connect to multiple instances, so that pupetering could be possible.
-    /// i.e. Controlling seperate arms along with the face using the keys, without running the program multiple times.
-    /// (no idea if that is going to be possilbe in a single instance once the non-mini version is released)
-    /// - Better way to select which instance to connect to, in case more than one is running. (maybe process selection similar to cheat-engine)
-    /// </summary>
-    internal class VeadoCamp : IInstancesReceiver, IConnectionReceiver
+    // Functionality class to access all of the required data/functionality to communicate with
+    // VeadoTube, as well as what will be used by the DisplayPad to interact with the software.
+    internal class Veadotube : IInstancesReceiver, IConnectionReceiver
     {
-        // Main Entrance Point to application
-        static async Task Main(string[] args)
-        {
-            Console.WriteLine("Starting VeadoCamp Integration...");
-
-            
-
-            var Integration = new VeadoCamp();
-            
-            // Get instance, last one if multiple
-            Console.WriteLine("< active instances (will connect to last one, otherwise will quit)");
-            Instance lastInstance = default;
-            foreach (var i in Instances.Enumerate())
-            {
-                lastInstance = i;
-                Console.WriteLine($"< ID: {i.id} | Server: {i.server}");
-            }
-
-            // No instaces found
-            if (!lastInstance.id.isValid)
-                return;
-            // Server not enabled on instace
-            if (lastInstance.server == "0")
-                return;
-
-            // Connect to instance
-            using var instances = new Instances(Integration);
-            Integration.m_Connection = new Connection(lastInstance.server, "VeadoCamp", Integration);
-
-            // Manually send commands / events to websocket
-            // For debugging purposes only...
-            bool stop = false;
-            bool initialized = false;
-            Console.CancelKeyPress += (o, e) => stop = true;
-            while(!stop)
-            {
-                Console.WriteLine("\nPress 1 to Refresh List of States, 2 to Set State, 3 to Exit:");
-                var key = Console.ReadKey(intercept: true);
-
-                // Initially Load the List of States - Doesnt work initially for some reason, need to manually request for now.
-                if (!initialized)
-                {
-                    Integration.RequestAllStates();
-                    initialized = true;
-                }
-
-
-                switch (key.Key)
-                {
-                    case ConsoleKey.D1:
-                        Integration.RequestAllStates();
-                        break;
-                    case ConsoleKey.D2:
-                        string stateId = Integration.GetRandomState().ID;
-
-                        /*// Manually enter ID for debugging
-                        Console.WriteLine("\nEnter state ID:");
-                        string stateId = Console.ReadLine();*/
-
-                        Integration.SetState(stateId);
-                        break;
-                    case ConsoleKey.D3:
-                        stop = true;
-                        break;
-                    default:
-                        Console.WriteLine("Invalid option. Try again.");
-                        break;
-                }
-            }
-        }
-
-
-
         /////////////////////////////////////////////////////////////////////////////////
         /// UTILITY FUNCTIONS
         /////////////////////////////////////////////////////////////////////////////////
-        
+
+        // Gets a randomk State from the 'States' array
         public State GetRandomState()
         {
             if (States.Count < 1)
@@ -226,6 +148,8 @@ namespace VeadoCamp
         }
 
         // DEBUGGING ONLY
+        // Converts the Base64 Encoded version from VeadoTube to a .png
+        // and saves it to disk (desktop)
         public void SaveImageFromBase64(string base64Image, string filename)
         {
             // Get the path to the user's desktop
@@ -286,7 +210,6 @@ namespace VeadoCamp
             string message = "{\"event\":\"payload\",\"type\":\"stateEvents\",\"id\":\"mini\",\"payload\":{\"event\":\"list\"}}";
             m_Connection.Send("nodes", Encoding.UTF8.GetBytes(message));
             Console.WriteLine($"Requesting List of Current State");
-
         }
 
         public void RequestStateImage(string stateID)
@@ -356,9 +279,9 @@ namespace VeadoCamp
                 string message = Encoding.UTF8.GetString(data).TrimEnd('\0');
 
                 // Debugging
-                Console.WriteLine("From:                " + connection.server   );
-                Console.WriteLine("Message:             " + message             );
-                Console.WriteLine("Channel:             " + channel             );
+                Console.WriteLine("From:                " + connection.server);
+                Console.WriteLine("Message:             " + message);
+                Console.WriteLine("Channel:             " + channel);
 
 
                 // Deserialize JSON to temporary C# object
@@ -371,85 +294,85 @@ namespace VeadoCamp
                 switch (channel)
                 {
                     case "nodes":
-                    {
-                        // Command Type 
-                        switch (detailedPayload.Type)
                         {
-                            case "stateEvents": 
+                            // Command Type 
+                            switch (detailedPayload.Type)
                             {
-                                // Command Name
-                                switch (detailedPayload.Name)
-                                {
-                                    case "avatar state":
+                                case "stateEvents":
                                     {
-                                        // Payload Type
-                                        switch (detailedPayload.Payload.Event)
+                                        // Command Name
+                                        switch (detailedPayload.Name)
                                         {
-                                            case "list":    // Recieve a list of states that the instance holds
-                                            {
-                                                States.Clear();  // Clear existing states
-                                                foreach (var state in detailedPayload.Payload.States)
+                                            case "avatar state":
                                                 {
-                                                    // Create State
-                                                    States.Add(new State($"{state.ID}", state.Name));
-                                                    // Get the Image of the State
-                                                    RequestStateImage(state.ID);
-                                                }
-                                                Console.WriteLine("\n Updated States List.");
-                                                break;
-                                            }
-                                            case "peek":    // Recieve the currently active state in instance
-                                            {
-                                                SetActiveState(detailedPayload.Payload.ActiveState);
-                                                break;
-                                            }
-                                            case "thumb":
-                                            {
-                                                // Check if image was recieved / deserialized correctly
-                                                if (string.IsNullOrEmpty(detailedPayload.Payload.PNG) ||
-                                                    detailedPayload.Payload.pngWidth < 0 ||
-                                                    detailedPayload.Payload.pngHeight < 0)
-                                                    throw new Exception("Image was NULL!");
+                                                    // Payload Type
+                                                    switch (detailedPayload.Payload.Event)
+                                                    {
+                                                        case "list":    // Recieve a list of states that the instance holds
+                                                            {
+                                                                States.Clear();  // Clear existing States
+                                                                foreach (var state in detailedPayload.Payload.States)
+                                                                {
+                                                                    // Create State
+                                                                    States.Add(new State($"{state.ID}", state.Name));
+                                                                    // Get the Image of the State
+                                                                    RequestStateImage(state.ID);
+                                                                }
+                                                                Console.WriteLine("\n Updated States List.");
+                                                                break;
+                                                            }
+                                                        case "peek":    // Recieve the currently ACTIVE State in Instance
+                                                            {
+                                                                SetActiveState(detailedPayload.Payload.ActiveState);
+                                                                break;
+                                                            }
+                                                        case "thumb":   // Recieve the Image of a State
+                                                            {
+                                                                // Check if image was recieved / deserialized correctly
+                                                                if (string.IsNullOrEmpty(detailedPayload.Payload.PNG) ||
+                                                                    detailedPayload.Payload.pngWidth < 0 ||
+                                                                    detailedPayload.Payload.pngHeight < 0)
+                                                                    throw new Exception("Image was NULL!");
 
-                                                // Save Image
-                                                foreach (var state in States)
-                                                {
-                                                    if (state.ID == detailedPayload.Payload.ActiveState)
-                                                    { 
-                                                        state.Image = new Image(detailedPayload.Payload.pngWidth, detailedPayload.Payload.pngHeight, detailedPayload.Payload.PNG);
-                                                        // DEBUG: Save them to the Desktop in order to view them
-                                                        //SaveImageFromBase64(state.Image.Image64, state.Name);
-                                                    }
+                                                                // Save Image
+                                                                foreach (var state in States)
+                                                                {
+                                                                    if (state.ID == detailedPayload.Payload.ActiveState)
+                                                                    {
+                                                                        state.Image = new Image(detailedPayload.Payload.pngWidth, detailedPayload.Payload.pngHeight, detailedPayload.Payload.PNG);
+                                                                        // DEBUG: Save them to the Desktop in order to view them
+                                                                        //SaveImageFromBase64(state.Image.Image64, state.Name);
+                                                                    }
+                                                                }
+                                                                break;
+                                                            }
+                                                        case null:
+                                                            {
+                                                                throw new Exception("UNKNOWN PAYLOAD TYPE!");
+                                                            }
+                                                    } // End Event
+                                                    break;
                                                 }
-                                                break;
-                                            }
                                             case null:
-                                            {
-                                                throw new Exception("UNKNOWN PAYLOAD TYPE!");
-                                            }
-                                        } // End Event
+                                                {
+                                                    throw new Exception("UNKNOWN COMMAND NAME!");
+                                                }
+                                        } // End Name
+
                                         break;
                                     }
-                                    case null:
+                                case null:
                                     {
-                                        throw new Exception("UNKNOWN COMMAND NAME!");
+                                        throw new Exception("UNKNOWN COMMAND TYPE!");
                                     }
-                                } // End Name
+                            } // End Type
 
-                                break;
-                            }
-                            case null:
-                            {
-                                throw new Exception("UNKNOWN COMMAND TYPE!");
-                            }
-                        } // End Type
-
-                        break;
-                    }
+                            break;
+                        }
                     case null:
-                    {
-                        throw new Exception("reply UNKNOWN CHANNEL!");
-                    }
+                        {
+                            throw new Exception("reply UNKNOWN CHANNEL!");
+                        }
                 } // End of Switch
 
 
@@ -466,7 +389,7 @@ namespace VeadoCamp
         /////////////////////////////////////////////////////////////////////////////////
         /// MEMBER VARIABLES
         /////////////////////////////////////////////////////////////////////////////////
-        private Connection m_Connection;
+        public Connection m_Connection;
 
         public List<State> States = new List<State>();
 
