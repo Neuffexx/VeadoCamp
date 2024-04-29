@@ -9,10 +9,11 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.IO;
 
-// Veadotube API
+// VT API
+/// The 'BleatCan' Project was taken from GitLab by Olmewe: https://gitlab.com/veadotube/bleatcan
 using VeadoTube.BleatCan;
 
-namespace VeadoCamp.IDKYet
+namespace VeadoCamp.Integrations
 {
     /////////////////////////////////////////////////////////////////////////////////
     /// VeadoTube object classes for Deserializing the Responses
@@ -64,7 +65,7 @@ namespace VeadoCamp.IDKYet
         public string PNG { get; set; }
     }
 
-    // Veadotube States
+    // VT States
     public class State
     {
         // Constructor
@@ -90,7 +91,7 @@ namespace VeadoCamp.IDKYet
         public bool Active { get; set; }
     }
 
-    // Veadotube State Images
+    // VT State Images
     public class Image
     {
         public Image(int width, int height, string imageData64)
@@ -116,7 +117,7 @@ namespace VeadoCamp.IDKYet
 
     // Functionality class to access all of the required data/functionality to communicate with
     // VeadoTube, as well as what will be used by the DisplayPad to interact with the software.
-    internal class Veadotube : IInstancesReceiver, IConnectionReceiver
+    internal class VT : IInstancesReceiver, IConnectionReceiver
     {
         /////////////////////////////////////////////////////////////////////////////////
         /// UTILITY FUNCTIONS
@@ -130,6 +131,31 @@ namespace VeadoCamp.IDKYet
 
             Random random = new Random();
             return States[random.Next(States.Count)];
+        }
+
+        // Gets a State based on its ID
+        // ID is an Int simply to allow override based on name as they are both string
+        public State GetState(int ID) 
+        {
+            foreach(var state in States)
+            {
+                if(state.ID == ID.ToString())
+                    return state;
+            }
+
+            return null;
+        }
+
+        //Gets a State based on its Name
+        public State GetState(string Name)
+        {
+            foreach (var state in States)
+            {
+                if (state.Name == Name)
+                    return state;
+            }
+
+            return null;
         }
 
         // Done here instead of the 'SetState' function,
@@ -202,7 +228,7 @@ namespace VeadoCamp.IDKYet
             string message = "{\"event\":\"payload\",\"type\":\"stateEvents\",\"id\":\"mini\",\"payload\":{\"event\":\"set\",\"state\":\"" + stateID + "\"}}";
             // Assuming 'connection' is an instance of 'Connection' that has already been established
             m_Connection.Send("nodes", Encoding.UTF8.GetBytes(message));
-            Console.WriteLine($"Attempting to set state to {stateID} in 'mini' node...");
+            Console.WriteLine($"Attempting to set state to [ {stateID} | {GetState(int.Parse(stateID)).Name} ] in 'mini' node...");
         }
 
         public void RequestAllStates()

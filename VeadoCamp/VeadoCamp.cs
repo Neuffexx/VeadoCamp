@@ -6,10 +6,11 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
-using VeadoCamp.IDKYet;
-using VeadoTube.BleatCan;
+
 using static System.Runtime.InteropServices.JavaScript.JSType;
 
+using VeadoTube.BleatCan;
+using VeadoCamp.Integrations;
 
 ////////////////////////////////////////////
 // Exit Codes Overview:
@@ -23,7 +24,7 @@ using static System.Runtime.InteropServices.JavaScript.JSType;
 /// 
 //  Examples
 /// 30 = VeadoTube instance not found
-/// 31 = DisplayPad not found / connected
+/// 31 = DisplayPad not found / disconnected
 ////////////////////////////////////////////
 
 
@@ -50,35 +51,33 @@ namespace VeadoCamp
 
 
             // Create veadotube api interface
-            Veadotube VeadoIntegration = new Veadotube();
-            connectToVInstance(VeadoIntegration);
+            VT VeadoIntegration = new VT();
+            connectToVTInstance(VeadoIntegration);
 
             //Connect to DP Device
             DP DPIntegration = new DP();
-            connectToDevice(DPIntegration);
+            connectToDevice(DPIntegration, VeadoIntegration);
 
             // Manually send commands / events to websocket
             // For debugging purposes only...
             bool stop = false;
-            bool initialized = false;
+            bool VTStatesInitialized = false;
             Console.CancelKeyPress += (o, e) => stop = true;
             while (!stop)
             {
-                // Check if Device still connected
-                if (!DPIntegration.bIsDevicePlugged)
-                {
-                    Console.WriteLine("< DisplayPad has been disconnected!");
-                    System.Environment.Exit(31);
-                }
-
                 // Initially Load the List of States - Doesnt work initially for some reason, need to manually request for now.
-                if (!initialized)
+                if (!VTStatesInitialized)
                 {
                     VeadoIntegration.RequestAllStates();
-                    initialized = true;
+                    VTStatesInitialized = true;
                 }
 
+                // Only Print this line if a non-displayPad button is Pressed
+                Console.WriteLine(">>>>>>> Waiting on Input from DisplayPad......");
+                Console.ReadKey(intercept: true);
 
+                /*
+                // Manual Debugging without DP
                 Console.WriteLine("\nPress 1 to Refresh List of States, 2 to Set State, 3 to Exit:");
                 var key = Console.ReadKey(intercept: true);
 
@@ -91,9 +90,9 @@ namespace VeadoCamp
                     case ConsoleKey.D2:
                         string stateId = VeadoIntegration.GetRandomState().ID;
 
-                        /*// Manually enter ID for debugging
-                        Console.WriteLine("\nEnter state ID:");
-                        string stateId = Console.ReadLine();*/
+                        // Manually enter ID for debugging
+                        //Console.WriteLine("\nEnter state ID:");
+                        //string stateId = Console.ReadLine();
 
                         VeadoIntegration.SetState(stateId);
                         break;
@@ -104,10 +103,11 @@ namespace VeadoCamp
                         Console.WriteLine("Invalid option. Try again.");
                         break;
                 }
+                */
             }
         }
 
-        static void connectToVInstance(Veadotube VeadoIntegration)
+        static void connectToVTInstance(VT VeadoIntegration)
         {
             // Get instance, last one if multiple
             Console.WriteLine("< active instances (will connect to last one, otherwise will quit)");
@@ -127,7 +127,7 @@ namespace VeadoCamp
             VeadoIntegration.m_Connection = new Connection(lastInstance.server, "VeadoCamp", VeadoIntegration);
         }
 
-        static void connectToDevice(DP DPIntegration) 
+        static void connectToDevice(DP DPIntegration, VT VeadoIntegration)
         {
             //Check if device is connected
             Console.WriteLine("< connected DisplayPad (checks for DisplayPad, otherwise will quit)");
@@ -137,7 +137,9 @@ namespace VeadoCamp
             // No device found, close program
             if (!DPIntegration.bIsDevicePlugged)
                 System.Environment.Exit(31);
-        }
 
+            // DEBUG: Register a function to all keys
+            DPIntegration.CreateKeyList(() => VeadoIntegration.SetState(VeadoIntegration.GetRandomState().ID));
+        }
     }
 }
